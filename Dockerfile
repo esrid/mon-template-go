@@ -1,22 +1,19 @@
-FROM golang:alpine3.24 as builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /build
 
-RUN apk add --no-cache git
-RUN apk add --no-cache ca-certificates
+# gcc/musl-dev: mattn/go-sqlite3 requires cgo.
+RUN apk add --no-cache gcc musl-dev
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o placehoder ./cmd/server
+RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o app ./cmd
 
-FROM scratch
-COPY --from=builder /build/bureau /bureau
-COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-
-EXPOSE 8081 # placeholder port
-
-ENTRYPOINT ["./placeholder"]
-
+FROM alpine:3.22
+COPY --from=builder /build/app /app
+ENV DSN=/data/app.db
+VOLUME /data
+ENTRYPOINT ["/app"]

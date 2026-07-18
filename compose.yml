@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    environment:
+      DSN: /data/app.db
+    volumes:
+      - data:/data
+    # ports:
+    #   - "8080:8080"  # uncomment when the HTTP server exists
+
+volumes:
+  data:
