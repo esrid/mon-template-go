@@ -4,10 +4,11 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
+	"strings"
 
-	// mattn/go-sqlite3's init() registers the "sqlite3" driver used by
-	// sql.Open below; store_helper.go imports it non-blank for sqlite3.Error.
 	"github.com/pressly/goose/v3"
+	// Registers the pure-Go (no cgo) "sqlite" driver used by sql.Open below.
+	_ "modernc.org/sqlite"
 )
 
 //go:embed migrations/*.sql
@@ -22,27 +23,26 @@ func NewStore(db *sql.DB) *Store {
 }
 
 func Open(dsn string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite3", dsn)
+	// _pragma DSN params apply to every pooled connection (busy_timeout and
+	// foreign_keys are per-connection settings, a one-off Exec would miss them).
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	dsn += sep + "_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
 
-	// Enable WAL mode, busy timeout, and foreign keys for safe concurrent usage.
-	if _, err := db.Exec("PRAGMA journal_mode=WAL;"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("store: enable WAL: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA busy_timeout=5000;"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("store: set busy timeout: %w", err)
-	}
-	if _, err := db.Exec("PRAGMA foreign_keys=ON;"); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("store: enable foreign keys: %w", err)
-	}
-
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(10)
+
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("store: open %q: %w", dsn, err)
+	}
 
 	if err := runMigrations(db); err != nil {
 		_ = db.Close()

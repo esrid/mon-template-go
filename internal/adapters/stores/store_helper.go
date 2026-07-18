@@ -6,8 +6,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/mattn/go-sqlite3"
 	"github.com/samber/oops"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 func (s *Store) WithinTransaction(ctx context.Context, tFunc func(*sql.Tx) error) (err error) {
@@ -37,12 +38,9 @@ func DecorateError(err error, op string) error {
 		return nil
 	}
 	o := oops.Code("database_error").With("op", op)
-	var sqliteErr sqlite3.Error
+	var sqliteErr *sqlite.Error
 	if errors.As(err, &sqliteErr) {
-		return o.
-			With("sqlite_code", sqliteErr.Code).
-			With("sqlite_extended_code", sqliteErr.ExtendedCode).
-			Wrap(err)
+		return o.With("sqlite_code", sqliteErr.Code()).Wrap(err)
 	}
 	return o.Wrap(err)
 }
@@ -51,10 +49,10 @@ func IsUniqueViolation(err error) bool {
 	if err == nil {
 		return false
 	}
-	var sqliteErr sqlite3.Error
+	var sqliteErr *sqlite.Error
 	if errors.As(err, &sqliteErr) {
-		return sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique ||
-			sqliteErr.Code == sqlite3.ErrConstraint
+		return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE ||
+			sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
 	}
 	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
