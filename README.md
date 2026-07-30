@@ -32,11 +32,12 @@ internal/
     sqlite/                  connection, pragmas, migrations, tx helper
     web/                     middleware and response helpers
   feature/
-    readiness/               the reference feature — one package, whole slice
-      readiness.go           use-case
-      port.go                the interfaces this feature needs
-      http.go                routes and handlers
-      readiness_test.go
+    readiness/               smallest slice: use-case, port, routes
+    subscriber/              full slice — copy this one for real features
+      subscriber.go          use-case, validation, its own errors
+      port.go                the interfaces it needs (Store, Clock)
+      http.go                routes, JSON, error-to-status mapping
+      sqlite.go              its SQL, behind the port above
 assets/                      optional frontend sources; no toolchain imposed
 ```
 
@@ -52,6 +53,10 @@ Three rules keep this readable as it grows:
 
 ### Adding a feature
 
+Copy `internal/feature/subscriber/` and rename. It shows the whole shape:
+validation, feature-owned errors mapped to status codes, its own SQL, and an
+injected clock so the use-case stays deterministic.
+
 ```text
 internal/feature/billing/
   billing.go     use-case and its types
@@ -59,6 +64,10 @@ internal/feature/billing/
   http.go        func Mount(*http.ServeMux, *Service)
   sqlite.go      the SQL, behind the port above
 ```
+
+Ports are not only for databases. Any ambient or external input — the clock, a
+mailer, a payment gateway — enters as an interface the feature declares itself,
+so tests inject a stub and production wires the real one in `internal/app`.
 
 Each feature declares its own full paths, like Django's `include()`:
 
@@ -127,9 +136,10 @@ make lint     # requires golangci-lint
 make vuln     # checks reachable known vulnerabilities
 ```
 
-Tests cover configuration, middleware, the readiness feature end to end, route
-mounting and wiring, SQLite migrations, connection policy, transactions, and
-constraint detection.
+Tests cover configuration, middleware, both features end to end (validation,
+error-to-status mapping, SQL against a real in-memory database), route mounting
+and wiring, SQLite migrations, connection policy, transactions, and constraint
+detection.
 
 ## Use as a template
 

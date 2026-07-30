@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/esrid/mon-template-go/internal/feature/readiness"
+	"github.com/esrid/mon-template-go/internal/feature/subscriber"
 	"github.com/esrid/mon-template-go/internal/platform/config"
 	"github.com/esrid/mon-template-go/internal/platform/sqlite"
 )
@@ -25,7 +26,8 @@ type App struct {
 
 	// One field per feature service. Wiring a new feature is: build it here,
 	// mount it in routes.go.
-	readiness *readiness.Service
+	readiness   *readiness.Service
+	subscribers *subscriber.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -41,10 +43,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
+	// Features are built here and nowhere else. readiness.Store is satisfied by
+	// *sqlite.DB directly; subscriber needs its own SQL, so it gets a store
+	// built from the same connection, plus the clock it depends on.
 	app := &App{
 		database:        database,
 		shutdownTimeout: cfg.ShutdownTimeout,
 		readiness:       readiness.New(database),
+		subscribers:     subscriber.New(subscriber.NewSQLiteStore(database), time.Now),
 	}
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
