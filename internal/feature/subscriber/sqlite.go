@@ -11,6 +11,11 @@ import (
 
 // SQLiteStore implements Store. The SQL lives with the feature that owns the
 // table; internal/platform/sqlite only supplies the connection and helpers.
+//
+// Schema: internal/platform/sqlite/migrations/00002_subscribers.sql
+// Migrations stay centralised because goose orders versions on one global
+// sequence, with no cross-feature dependency graph. Copying this package
+// without its migration fails loudly in this package's own tests.
 type SQLiteStore struct {
 	db *sqlite.DB
 }

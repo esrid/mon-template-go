@@ -105,12 +105,24 @@ declares the narrow interface it needs, `platform/` implements it, `app/` wires
 it.
 
 Migrations live in `internal/platform/sqlite/migrations/` and run when the
-database opens. They are centralised rather than per-feature because goose
-orders versions globally, which keeps cross-feature foreign keys safe; per
-feature is possible with `goose.WithTableName` once features are truly
-independent. The in-memory DSN is restricted to one connection so its schema
-remains consistent. File databases use WAL, foreign keys, a busy timeout, and a
-small connection pool.
+database opens. A feature owns its tables and its SQL, but not its migration
+file — name the file after the feature (`00002_subscribers.sql`) and point to it
+from the feature's `sqlite.go`.
+
+They stay centralised on purpose. Django can give each app its own migrations
+because it resolves them through a dependency graph; goose has a single global
+version sequence and no such graph, so per-feature directories would make the
+order between features depend on the wiring order in `internal/app` — implicit,
+and silent when a cross-feature foreign key applies too early. A feature copied
+without its migration fails loudly in that feature's own tests, which is the
+guard that makes the trade-off cheap.
+
+If parallel branches start colliding on version numbers, switch to timestamped
+versions and `goose.WithAllowOutofOrder` before splitting the directory.
+
+The in-memory DSN is restricted to one connection so its schema remains
+consistent. File databases use WAL, foreign keys, a busy timeout, and a small
+connection pool.
 
 ## Configuration
 
