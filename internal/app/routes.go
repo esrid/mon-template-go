@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/esrid/mon-template-go/internal/feature/readiness"
+	"github.com/esrid/mon-template-go/internal/feature/subscriber"
 	"github.com/esrid/mon-template-go/internal/platform/web"
 )
 
@@ -21,6 +22,7 @@ func (a *App) routes() http.Handler {
 	root := http.NewServeMux()
 
 	readiness.Mount(root, a.readiness)
+	subscriber.Mount(root, a.subscribers)
 
 	return web.Middleware(root)
 }
