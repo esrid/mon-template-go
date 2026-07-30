@@ -1,4 +1,4 @@
-package di
+package app
 
 import (
 	"context"
@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/esrid/mon-template-go/internal/config"
+	"github.com/esrid/mon-template-go/internal/platform/config"
 )
 
-func TestNewWiresReadinessSlice(t *testing.T) {
+func TestNewWiresTheReadinessSlice(t *testing.T) {
 	cfg := testConfig(filepath.Join(t.TempDir(), "app.db"))
 	app, err := New(context.Background(), cfg)
 	if err != nil {
@@ -25,8 +25,28 @@ func TestNewWiresReadinessSlice(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	response := httptest.NewRecorder()
 	app.server.Handler.ServeHTTP(response, request)
+
 	if response.Code != http.StatusOK {
 		t.Fatalf("readiness status = %d, want %d", response.Code, http.StatusOK)
+	}
+	// The middleware stack must wrap the mounted features, not bypass them.
+	if response.Header().Get("X-Request-ID") == "" {
+		t.Fatal("X-Request-ID header is empty: middleware is not wrapping the routes")
+	}
+}
+
+func TestUnknownRouteIsNotFound(t *testing.T) {
+	app, err := New(context.Background(), testConfig(filepath.Join(t.TempDir(), "app.db")))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = app.Close() })
+
+	response := httptest.NewRecorder()
+	app.server.Handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/nope", nil))
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }
 

@@ -1,4 +1,6 @@
-package httpserver
+// Package web holds HTTP plumbing shared by every feature: middleware,
+// response helpers, request-scoped values. It knows nothing about any feature.
+package web
 
 import (
 	"context"
@@ -11,6 +13,24 @@ import (
 )
 
 type requestIDKey struct{}
+
+// Middleware wraps a handler with the stack every request goes through.
+//
+// Order matters, outermost first:
+//   - requestID, so every layer below can reference the same id;
+//   - accessLog, outside recoverPanic so a panicking request still produces
+//     exactly one access-log line, with its 500 status;
+//   - securityHeaders, before anything can write a body;
+//   - recoverPanic, closest to the handler it protects.
+func Middleware(next http.Handler) http.Handler {
+	return requestID(accessLog(securityHeaders(recoverPanic(next))))
+}
+
+// RequestID returns the id assigned to the in-flight request, or "".
+func RequestID(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDKey{}).(string)
+	return id
+}
 
 type responseRecorder struct {
 	http.ResponseWriter
@@ -47,8 +67,8 @@ func recoverPanic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				slog.Error("request panic", "request_id", requestIDFromContext(r.Context()), "panic", recovered, "stack", string(debug.Stack()))
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
+				slog.Error("request panic", "request_id", RequestID(r.Context()), "panic", recovered, "stack", string(debug.Stack()))
+				JSON(w, http.StatusInternalServerError, map[string]string{"error": "internal server error"})
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -65,7 +85,7 @@ func accessLog(next http.Handler) http.Handler {
 			status = http.StatusOK
 		}
 		slog.Info("request",
-			"request_id", requestIDFromContext(r.Context()),
+			"request_id", RequestID(r.Context()),
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", status,
@@ -80,11 +100,6 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		next.ServeHTTP(w, r)
 	})
-}
-
-func requestIDFromContext(ctx context.Context) string {
-	id, _ := ctx.Value(requestIDKey{}).(string)
-	return id
 }
 
 func newRequestID() string {

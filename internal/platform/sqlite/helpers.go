@@ -11,8 +11,9 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 )
 
-func (s *Store) withinTransaction(ctx context.Context, fn func(*sql.Tx) error) (err error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+// WithinTransaction runs fn in a transaction, rolling back on error or panic.
+func (d *DB) WithinTransaction(ctx context.Context, fn func(*sql.Tx) error) (err error) {
+	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return oops.Code("db_begin_failed").Wrap(err)
 	}
@@ -33,7 +34,8 @@ func (s *Store) withinTransaction(ctx context.Context, fn func(*sql.Tx) error) (
 	return nil
 }
 
-func decorateError(err error, operation string) error {
+// DecorateError attaches the SQLite error code to err for structured logging.
+func DecorateError(err error, operation string) error {
 	if err == nil {
 		return nil
 	}
@@ -45,7 +47,9 @@ func decorateError(err error, operation string) error {
 	return wrapped.Wrap(err)
 }
 
-func isUniqueViolation(err error) bool {
+// IsUniqueViolation reports whether err is a UNIQUE or PRIMARY KEY conflict,
+// so a feature can map it to its own "already exists" error.
+func IsUniqueViolation(err error) bool {
 	if err == nil {
 		return false
 	}
@@ -55,32 +59,4 @@ func isUniqueViolation(err error) bool {
 			sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
 	}
 	return strings.Contains(err.Error(), "UNIQUE constraint failed")
-}
-
-func collectRows[T any](rows *sql.Rows, operation string, scan func(*sql.Rows) (T, error)) ([]T, error) {
-	defer func() { _ = rows.Close() }()
-	var values []T
-	for rows.Next() {
-		value, err := scan(rows)
-		if err != nil {
-			return nil, decorateError(err, operation)
-		}
-		values = append(values, value)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, decorateError(err, operation)
-	}
-	return values, nil
-}
-
-func queryRow[T any](row *sql.Row, notFound error, operation string, scan func(*sql.Row) (T, error)) (T, error) {
-	value, err := scan(row)
-	if err != nil {
-		var zero T
-		if errors.Is(err, sql.ErrNoRows) {
-			return zero, notFound
-		}
-		return zero, decorateError(err, operation)
-	}
-	return value, nil
 }
