@@ -1,53 +1,108 @@
-// Package di wires the application dependencies. main only calls Run.
+// Package di is the composition root. Database-specific adapters are selected
+// here; the core and HTTP adapter depend only on the capabilities they consume.
 package di
 
 import (
 	"context"
-	"database/sql"
+	"errors"
+	"fmt"
+	"io"
 	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
+	"net/http"
+	"time"
 
-	store "github.com/esrid/mon-template-go/internal/adapters/stores"
+	"github.com/esrid/mon-template-go/internal/adapters/httpserver"
+	"github.com/esrid/mon-template-go/internal/adapters/stores/sqlite"
+	"github.com/esrid/mon-template-go/internal/config"
+	"github.com/esrid/mon-template-go/internal/core/services"
 )
 
-// App holds the wired dependencies. Add services and handlers here as the
-// project grows; keep construction in New so wiring stays in one place.
 type App struct {
-	DB    *sql.DB
-	Store *store.Store
+	server          *http.Server
+	database        io.Closer
+	shutdownTimeout time.Duration
 }
 
-func New(dsn string) (*App, error) {
-	db, err := store.Open(dsn)
+func New(ctx context.Context, cfg config.Config) (*App, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
+	// Persistence selection belongs in this composition root. To move to
+	// PostgreSQL, wire a PostgreSQL adapter that satisfies the same core ports.
+	database, err := sqlite.Open(ctx, cfg.DatabaseDSN)
 	if err != nil {
 		return nil, err
 	}
-	return &App{DB: db, Store: store.NewStore(db)}, nil
-}
 
-func (a *App) Close() error { return a.DB.Close() }
-
-// Run builds the app and blocks until SIGINT/SIGTERM.
-// Start long-running components (HTTP server, workers) here.
-func Run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-
-	dsn := os.Getenv("DSN")
-	if dsn == "" {
-		dsn = "app.db"
+	readiness := services.NewReadiness(database)
+	server := &http.Server{
+		Addr:              cfg.HTTPAddr,
+		Handler:           httpserver.New(readiness),
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	}
 
-	app, err := New(dsn)
+	return &App{
+		server:          server,
+		database:        database,
+		shutdownTimeout: cfg.ShutdownTimeout,
+	}, nil
+}
+
+func Run(ctx context.Context, cfg config.Config) error {
+	app, err := New(ctx, cfg)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = app.Close() }()
+	defer func() {
+		if err := app.Close(); err != nil {
+			slog.Error("close application", "err", err)
+		}
+	}()
+	return app.Run(ctx)
+}
 
-	slog.Info("started", "dsn", dsn)
-	<-ctx.Done()
-	slog.Info("shutting down")
+func (a *App) Run(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+
+	serverResult := make(chan error, 1)
+	go func() {
+		err := a.server.ListenAndServe()
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
+		}
+		serverResult <- err
+	}()
+	slog.Info("http server started", "addr", a.server.Addr)
+
+	select {
+	case err := <-serverResult:
+		if err != nil {
+			return fmt.Errorf("http server: %w", err)
+		}
+		return nil
+	case <-ctx.Done():
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), a.shutdownTimeout)
+	defer cancel()
+	if err := a.server.Shutdown(shutdownCtx); err != nil {
+		_ = a.server.Close()
+		return fmt.Errorf("http server shutdown: %w", err)
+	}
+	if err := <-serverResult; err != nil {
+		return fmt.Errorf("http server: %w", err)
+	}
+	slog.Info("http server stopped")
 	return nil
+}
+
+func (a *App) Close() error {
+	return a.database.Close()
 }
