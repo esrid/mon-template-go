@@ -12,18 +12,18 @@ func TestOpenRunsMigrationsAndCanReopen(t *testing.T) {
 	ctx := context.Background()
 	dsn := filepath.Join(t.TempDir(), "app.db")
 
-	store, err := Open(ctx, dsn)
+	db, err := Open(ctx, dsn)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
 	var migrationCount int
-	if err := store.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM goose_db_version").Scan(&migrationCount); err != nil {
+	if err := db.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM goose_db_version").Scan(&migrationCount); err != nil {
 		t.Fatalf("query migration table: %v", err)
 	}
 	if migrationCount == 0 {
 		t.Fatal("migration table is empty")
 	}
-	if err := store.Close(); err != nil {
+	if err := db.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
 
@@ -37,28 +37,28 @@ func TestOpenRunsMigrationsAndCanReopen(t *testing.T) {
 }
 
 func TestMemoryDatabaseUsesOneConnection(t *testing.T) {
-	store, err := Open(context.Background(), ":memory:")
+	db, err := Open(context.Background(), ":memory:")
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	if got := store.db.Stats().MaxOpenConnections; got != 1 {
+	t.Cleanup(func() { _ = db.Close() })
+	if got := db.SQL().Stats().MaxOpenConnections; got != 1 {
 		t.Fatalf("MaxOpenConnections = %d, want 1", got)
 	}
 }
 
 func TestWithinTransaction(t *testing.T) {
 	ctx := context.Background()
-	store, err := Open(ctx, ":memory:")
+	db, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	if _, err := store.db.ExecContext(ctx, "CREATE TABLE items (id INTEGER PRIMARY KEY)"); err != nil {
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.SQL().ExecContext(ctx, "CREATE TABLE items (id INTEGER PRIMARY KEY)"); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
 
-	if err := store.withinTransaction(ctx, func(tx *sql.Tx) error {
+	if err := db.WithinTransaction(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, "INSERT INTO items (id) VALUES (1)")
 		return err
 	}); err != nil {
@@ -66,7 +66,7 @@ func TestWithinTransaction(t *testing.T) {
 	}
 
 	rollbackErr := errors.New("rollback")
-	err = store.withinTransaction(ctx, func(tx *sql.Tx) error {
+	err = db.WithinTransaction(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO items (id) VALUES (2)"); err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func TestWithinTransaction(t *testing.T) {
 	}
 
 	var count int
-	if err := store.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM items").Scan(&count); err != nil {
+	if err := db.SQL().QueryRowContext(ctx, "SELECT COUNT(*) FROM items").Scan(&count); err != nil {
 		t.Fatalf("count items: %v", err)
 	}
 	if count != 1 {
@@ -85,21 +85,21 @@ func TestWithinTransaction(t *testing.T) {
 	}
 }
 
-func TestUniqueViolation(t *testing.T) {
+func TestIsUniqueViolation(t *testing.T) {
 	ctx := context.Background()
-	store, err := Open(ctx, ":memory:")
+	db, err := Open(ctx, ":memory:")
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)
 	}
-	t.Cleanup(func() { _ = store.Close() })
-	if _, err := store.db.ExecContext(ctx, "CREATE TABLE users (email TEXT UNIQUE)"); err != nil {
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.SQL().ExecContext(ctx, "CREATE TABLE users (email TEXT UNIQUE)"); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
-	if _, err := store.db.ExecContext(ctx, "INSERT INTO users (email) VALUES ('a@example.com')"); err != nil {
+	if _, err := db.SQL().ExecContext(ctx, "INSERT INTO users (email) VALUES ('a@example.com')"); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	_, err = store.db.ExecContext(ctx, "INSERT INTO users (email) VALUES ('a@example.com')")
-	if !isUniqueViolation(err) {
-		t.Fatalf("isUniqueViolation(%v) = false", err)
+	_, err = db.SQL().ExecContext(ctx, "INSERT INTO users (email) VALUES ('a@example.com')")
+	if !IsUniqueViolation(err) {
+		t.Fatalf("IsUniqueViolation(%v) = false", err)
 	}
 }

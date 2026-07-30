@@ -1,3 +1,6 @@
+// Package sqlite owns the SQLite connection, pragmas, and schema migrations.
+// It holds no business logic: features build their own queries on top of *DB
+// and expose them through interfaces they define themselves.
 package sqlite
 
 import (
@@ -12,14 +15,20 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Migrations are centralised here rather than split per feature: goose orders
+// versions globally, so a single directory keeps cross-feature foreign keys
+// safe. To move to per-feature migrations, give each feature its own provider
+// with goose.WithTableName (available in goose v3.27.2) and accept that the
+// ordering between features becomes the wiring order in internal/app.
+//
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-type Store struct {
+type DB struct {
 	db *sql.DB
 }
 
-func Open(ctx context.Context, dsn string) (*Store, error) {
+func Open(ctx context.Context, dsn string) (*DB, error) {
 	db, err := sql.Open("sqlite", withPragmas(dsn))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: open: %w", err)
@@ -41,16 +50,16 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 		return nil, err
 	}
 
-	return &Store{db: db}, nil
+	return &DB{db: db}, nil
 }
 
-func (s *Store) Ping(ctx context.Context) error {
-	return s.db.PingContext(ctx)
-}
+// SQL exposes the pool so a feature can write its own queries. Keep that SQL
+// inside the feature package, behind an interface the feature owns.
+func (d *DB) SQL() *sql.DB { return d.db }
 
-func (s *Store) Close() error {
-	return s.db.Close()
-}
+func (d *DB) Ping(ctx context.Context) error { return d.db.PingContext(ctx) }
+
+func (d *DB) Close() error { return d.db.Close() }
 
 func runMigrations(ctx context.Context, db *sql.DB) error {
 	migrationFS, err := fs.Sub(migrations, "migrations")

@@ -1,6 +1,8 @@
-// Package di is the composition root. Database-specific adapters are selected
-// here; the core and HTTP adapter depend only on the capabilities they consume.
-package di
+// Package app is the composition root and process lifecycle.
+//
+// It is the only package that knows both the concrete adapters and the
+// features. Features never import each other; they meet here.
+package app
 
 import (
 	"context"
@@ -11,16 +13,19 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/esrid/mon-template-go/internal/adapters/httpserver"
-	"github.com/esrid/mon-template-go/internal/adapters/stores/sqlite"
-	"github.com/esrid/mon-template-go/internal/config"
-	"github.com/esrid/mon-template-go/internal/core/services"
+	"github.com/esrid/mon-template-go/internal/feature/readiness"
+	"github.com/esrid/mon-template-go/internal/platform/config"
+	"github.com/esrid/mon-template-go/internal/platform/sqlite"
 )
 
 type App struct {
 	server          *http.Server
 	database        io.Closer
 	shutdownTimeout time.Duration
+
+	// One field per feature service. Wiring a new feature is: build it here,
+	// mount it in routes.go.
+	readiness *readiness.Service
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -28,17 +33,22 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 
-	// Persistence selection belongs in this composition root. To move to
-	// PostgreSQL, wire a PostgreSQL adapter that satisfies the same core ports.
+	// Choosing SQLite is a decision of this root, not of any feature.
+	// Swapping in Postgres means changing this line and implementing the
+	// same feature-owned ports.
 	database, err := sqlite.Open(ctx, cfg.DatabaseDSN)
 	if err != nil {
 		return nil, err
 	}
 
-	readiness := services.NewReadiness(database)
-	server := &http.Server{
+	app := &App{
+		database:        database,
+		shutdownTimeout: cfg.ShutdownTimeout,
+		readiness:       readiness.New(database),
+	}
+	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           httpserver.New(readiness),
+		Handler:           app.routes(),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -46,11 +56,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	}
 
-	return &App{
-		server:          server,
-		database:        database,
-		shutdownTimeout: cfg.ShutdownTimeout,
-	}, nil
+	return app, nil
 }
 
 func Run(ctx context.Context, cfg config.Config) error {

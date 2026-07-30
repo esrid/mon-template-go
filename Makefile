@@ -1,10 +1,10 @@
 .PHONY: build run test vet lint vuln
 
 build:
-	go build -o bin/app ./cmd
+	go build -o bin/app ./cmd/web
 
 run:
-	go run ./cmd
+	go run ./cmd/web
 
 test:
 	go test -race ./...

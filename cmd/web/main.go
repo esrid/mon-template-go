@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/esrid/mon-template-go/internal/config"
-	"github.com/esrid/mon-template-go/internal/di"
+	"github.com/esrid/mon-template-go/internal/app"
+	"github.com/esrid/mon-template-go/internal/platform/config"
 )
 
 func main() {
@@ -25,5 +25,5 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	return di.Run(ctx, cfg)
+	return app.Run(ctx, cfg)
 }

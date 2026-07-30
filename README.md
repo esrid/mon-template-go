@@ -1,8 +1,8 @@
 # mon-template-go
 
-A small Go web application template with a standard-library HTTP server,
-database-neutral core seams, SQLite/WAL, embedded Goose migrations, manual
-dependency injection, tests, and a production container.
+A small Go web application template built from self-contained feature modules,
+with a standard-library HTTP server, SQLite/WAL, embedded Goose migrations,
+manual dependency injection, tests, and a production container.
 
 ## Start
 
@@ -20,47 +20,88 @@ docker compose up --build
 
 ## Layout
 
-- `cmd/` — process entrypoint and signal handling
-- `internal/config/` — environment configuration and validation
-- `internal/core/domain/` — domain types and errors
-- `internal/core/ports/` — narrow capabilities required by core use-cases
-- `internal/core/services/` — use-case implementation
-- `internal/adapters/httpserver/` — HTTP routes and middleware
-- `internal/adapters/stores/sqlite/` — SQLite implementation and migrations
-- `internal/di/` — composition root and application lifecycle
-- `assets/` — optional frontend sources; no frontend toolchain is imposed
+The code is cut by feature first, by layer second. A feature is a vertical
+slice you can read, test, or delete on its own.
+
+```text
+cmd/web/                     process entrypoint and signal handling
+internal/
+  app/                       composition root: builds features, mounts routes
+  platform/                  technical plumbing, no business logic
+    config/                  environment configuration and validation
+    sqlite/                  connection, pragmas, migrations, tx helper
+    web/                     middleware and response helpers
+  feature/
+    readiness/               the reference feature — one package, whole slice
+      readiness.go           use-case
+      port.go                the interfaces this feature needs
+      http.go                routes and handlers
+      readiness_test.go
+assets/                      optional frontend sources; no toolchain imposed
+```
+
+Three rules keep this readable as it grows:
+
+1. **Ports live with the feature that consumes them**, never in a shared
+   `ports/` package — that is what stops features coupling to each other.
+2. **One package per feature.** Splitting a feature into `domain/`, `service/`
+   and `store/` subpackages would force its internals to be exported, which
+   destroys the encapsulation the split was meant to create. Split only when a
+   feature genuinely hurts.
+3. **Features never import each other.** They meet in `internal/app`.
+
+### Adding a feature
+
+```text
+internal/feature/billing/
+  billing.go     use-case and its types
+  port.go        the interfaces it needs (Store, Mailer, PaymentGateway…)
+  http.go        func Mount(*http.ServeMux, *Service)
+  sqlite.go      the SQL, behind the port above
+```
+
+Each feature declares its own full paths, like Django's `include()`:
+
+```go
+func Mount(mux *http.ServeMux, service *Service) {
+	mux.HandleFunc("GET /billing/invoices", list(service))
+	mux.HandleFunc("GET /billing/invoices/{id}", show(service))
+}
+```
+
+Then build it in `internal/app/app.go` and mount it in `internal/app/routes.go`:
+
+```go
+billing.Mount(root, a.billing)
+```
+
+No feature registers `"/"`, so unknown paths get the root router's 404 instead
+of one that belongs to an unrelated feature.
 
 The optional frontend foundation includes neutral, accessible light/dark design
 tokens in `assets/src/css/tokens.css`. See `assets/src/css/README.md` for usage
 and brand customization; no reset, components, or CSS framework are imposed.
 
-The `/readyz` request is the template's first complete slice:
+## Swapping external services
 
-```text
-HTTP adapter -> readiness use-case -> ReadinessStore port -> SQLite adapter
-```
+`internal/platform/sqlite` is a concrete adapter. No feature imports
+`database/sql`, the SQLite driver, or Goose through anything but its own port.
 
-## Database portability
+`*sqlite.DB` satisfies `readiness.Store` structurally, so `internal/app` wires
+them with no glue code. To move to PostgreSQL, add `internal/platform/postgres`
+satisfying the same feature-owned ports and change the one construction line in
+`internal/app/app.go`. Features and handlers stay untouched. The same shape
+applies to any external service — mail, payments, object storage: the feature
+declares the narrow interface it needs, `platform/` implements it, `app/` wires
+it.
 
-SQLite is an adapter, not a core dependency. Core packages do not import
-`database/sql`, the SQLite driver, or Goose.
-
-For each new use-case:
-
-1. Define the smallest persistence interface it consumes in
-   `internal/core/ports`.
-2. Implement that interface in `internal/adapters/stores/sqlite`.
-3. Inject it into the use-case from `internal/di`.
-
-To move to PostgreSQL, add `internal/adapters/stores/postgres` implementing the
-same core ports, then change the persistence construction in `internal/di`. HTTP
-handlers and core use-cases remain unchanged. Keep SQL and migrations in each
-database adapter; do not create one large generic repository interface.
-
-SQLite migrations live in `internal/adapters/stores/sqlite/migrations/` and run
-when the adapter opens. The in-memory DSN is restricted to one connection so its
-schema remains consistent. File databases use WAL, foreign keys, a busy timeout,
-and a small connection pool.
+Migrations live in `internal/platform/sqlite/migrations/` and run when the
+database opens. They are centralised rather than per-feature because goose
+orders versions globally, which keeps cross-feature foreign keys safe; per
+feature is possible with `goose.WithTableName` once features are truly
+independent. The in-memory DSN is restricted to one connection so its schema
+remains consistent. File databases use WAL, foreign keys, a busy timeout, and a
+small connection pool.
 
 ## Configuration
 
@@ -86,8 +127,8 @@ make lint     # requires golangci-lint
 make vuln     # checks reachable known vulnerabilities
 ```
 
-Tests cover configuration, HTTP health behavior and middleware, core readiness,
-dependency wiring, SQLite migrations, connection policy, transactions, and
+Tests cover configuration, middleware, the readiness feature end to end, route
+mounting and wiring, SQLite migrations, connection policy, transactions, and
 constraint detection.
 
 ## Use as a template
