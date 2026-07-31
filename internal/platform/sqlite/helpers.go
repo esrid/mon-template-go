@@ -40,8 +40,7 @@ func DecorateError(err error, operation string) error {
 		return nil
 	}
 	wrapped := oops.Code("database_error").With("op", operation)
-	var sqliteErr *modernsqlite.Error
-	if errors.As(err, &sqliteErr) {
+	if sqliteErr, ok := errors.AsType[*modernsqlite.Error](err); ok {
 		return wrapped.With("sqlite_code", sqliteErr.Code()).Wrap(err)
 	}
 	return wrapped.Wrap(err)
@@ -53,8 +52,7 @@ func IsUniqueViolation(err error) bool {
 	if err == nil {
 		return false
 	}
-	var sqliteErr *modernsqlite.Error
-	if errors.As(err, &sqliteErr) {
+	if sqliteErr, ok := errors.AsType[*modernsqlite.Error](err); ok {
 		return sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE ||
 			sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY
 	}

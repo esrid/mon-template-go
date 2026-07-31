@@ -4,6 +4,18 @@ A small Go web application template built from self-contained feature modules,
 with a standard-library HTTP server, SQLite/WAL, embedded Goose migrations,
 manual dependency injection, tests, and a production container.
 
+
+## Engineering documentation
+
+- [`AGENTS.md`](AGENTS.md) — mandatory rules for coding agents and contributors
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — architecture and dependency model
+- [`docs/PROJECT_STRUCTURE.md`](docs/PROJECT_STRUCTURE.md) — directory placement guide
+- [`docs/STYLE_GUIDE.md`](docs/STYLE_GUIDE.md) — Go, HTTP, SQL, and naming conventions
+- [`docs/SECURITY.md`](docs/SECURITY.md) — security baseline and project additions
+- [`docs/TESTING.md`](docs/TESTING.md) — test strategy and examples
+- [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md) — pre-merge checklist
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architectural decision log
+
 ## Start
 
 ```sh
