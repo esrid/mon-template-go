@@ -84,6 +84,10 @@ func clearConfigEnvironment(t *testing.T) {
 		"HTTP_WRITE_TIMEOUT",
 		"HTTP_IDLE_TIMEOUT",
 		"SHUTDOWN_TIMEOUT",
+		"SESSION_SECURE",
+		"GOOGLE_CLIENT_ID",
+		"GOOGLE_CLIENT_SECRET",
+		"GOOGLE_REDIRECT_URL",
 	} {
 		t.Setenv(name, "")
 	}

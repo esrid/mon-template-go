@@ -13,9 +13,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/alexedwards/scs/v2"
+
+	"github.com/esrid/mon-template-go/internal/feature/identity"
 	"github.com/esrid/mon-template-go/internal/feature/readiness"
 	"github.com/esrid/mon-template-go/internal/feature/subscriber"
 	"github.com/esrid/mon-template-go/internal/platform/config"
+	platformsession "github.com/esrid/mon-template-go/internal/platform/session"
 	"github.com/esrid/mon-template-go/internal/platform/sqlite"
 )
 
@@ -28,6 +32,8 @@ type App struct {
 	// mount it in routes.go.
 	readiness   *readiness.Service
 	subscribers *subscriber.Service
+	identity    *identity.HTTP
+	sessions    *scs.SessionManager
 }
 
 func New(ctx context.Context, cfg config.Config) (*App, error) {
@@ -46,11 +52,28 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	// Features are built here and nowhere else. readiness.Store is satisfied by
 	// *sqlite.DB directly; subscriber needs its own SQL, so it gets a store
 	// built from the same connection, plus the clock it depends on.
+	sessions := scs.New()
+	sessions.Store = platformsession.NewSQLiteStore(database.SQL())
+	sessions.Lifetime = 24 * time.Hour
+	sessions.Cookie.Name = "session"
+	sessions.Cookie.HttpOnly = true
+	sessions.Cookie.Secure = cfg.SessionSecure
+	sessions.Cookie.SameSite = http.SameSiteLaxMode
+
+	identityService := identity.New(identity.NewSQLiteStore(database), identity.NewBcryptHasher(identity.DefaultBcryptCost), time.Now)
+	google, err := identity.NewGoogleProvider(ctx, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
+	if err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("google identity provider: %w", err)
+	}
+
 	app := &App{
 		database:        database,
 		shutdownTimeout: cfg.ShutdownTimeout,
 		readiness:       readiness.New(database),
 		subscribers:     subscriber.New(subscriber.NewSQLiteStore(database), time.Now),
+		identity:        identity.NewHTTP(identityService, sessions, google),
+		sessions:        sessions,
 	}
 	app.server = &http.Server{
 		Addr:              cfg.HTTPAddr,

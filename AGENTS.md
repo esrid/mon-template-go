@@ -454,3 +454,5 @@ Before declaring a task complete:
 - [ ] `go test -race ./...` passes.
 - [ ] `golangci-lint run` passes when available.
 - [ ] Documentation reflects architectural or operational changes.
+
+- [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md) — authentication flows and production boundaries.

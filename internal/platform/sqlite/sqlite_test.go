@@ -92,13 +92,13 @@ func TestIsUniqueViolation(t *testing.T) {
 		t.Fatalf("Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := db.SQL().ExecContext(ctx, "CREATE TABLE users (email TEXT UNIQUE)"); err != nil {
+	if _, err := db.SQL().ExecContext(ctx, "CREATE TABLE unique_probe (email TEXT UNIQUE)"); err != nil {
 		t.Fatalf("create table: %v", err)
 	}
-	if _, err := db.SQL().ExecContext(ctx, "INSERT INTO users (email) VALUES ('a@example.com')"); err != nil {
+	if _, err := db.SQL().ExecContext(ctx, "INSERT INTO unique_probe (email) VALUES ('a@example.com')"); err != nil {
 		t.Fatalf("insert user: %v", err)
 	}
-	_, err = db.SQL().ExecContext(ctx, "INSERT INTO users (email) VALUES ('a@example.com')")
+	_, err = db.SQL().ExecContext(ctx, "INSERT INTO unique_probe (email) VALUES ('a@example.com')")
 	if !IsUniqueViolation(err) {
 		t.Fatalf("IsUniqueViolation(%v) = false", err)
 	}
