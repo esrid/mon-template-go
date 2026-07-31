@@ -3,6 +3,7 @@ package app
 import (
 	"net/http"
 
+	"github.com/esrid/mon-template-go/internal/feature/identity"
 	"github.com/esrid/mon-template-go/internal/feature/readiness"
 	"github.com/esrid/mon-template-go/internal/feature/subscriber"
 	"github.com/esrid/mon-template-go/internal/platform/web"
@@ -21,8 +22,9 @@ import (
 func (a *App) routes() http.Handler {
 	root := http.NewServeMux()
 
+	identity.Mount(root, a.identity)
 	readiness.Mount(root, a.readiness)
 	subscriber.Mount(root, a.subscribers)
 
-	return web.Middleware(root)
+	return web.Middleware(a.sessions.LoadAndSave(root))
 }

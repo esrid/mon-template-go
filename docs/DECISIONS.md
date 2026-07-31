@@ -246,7 +246,7 @@ features cannot assume root permissions or arbitrary filesystem writes.
 
 ### Decision
 
-Do not preinstall authentication, sessions, CSRF/CORS, queues, caching, email,
+Do not preinstall queues, caching, a concrete email provider,
 payments, storage, or observability vendors.
 
 ### Rationale

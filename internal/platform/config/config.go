@@ -20,26 +20,34 @@ const (
 )
 
 type Config struct {
-	HTTPAddr          string
-	DatabaseDSN       string
-	MaxHeaderBytes    int
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-	ShutdownTimeout   time.Duration
+	HTTPAddr           string
+	DatabaseDSN        string
+	MaxHeaderBytes     int
+	ReadHeaderTimeout  time.Duration
+	ReadTimeout        time.Duration
+	WriteTimeout       time.Duration
+	IdleTimeout        time.Duration
+	ShutdownTimeout    time.Duration
+	SessionSecure      bool
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURL  string
 }
 
 func Load() (Config, error) {
 	cfg := Config{
-		HTTPAddr:          envOrDefault("HTTP_ADDR", defaultHTTPAddr),
-		DatabaseDSN:       envOrDefault("DATABASE_DSN", envOrDefault("DSN", defaultDatabaseDSN)),
-		MaxHeaderBytes:    defaultMaxHeaderBytes,
-		ReadHeaderTimeout: defaultReadHeaderTimeout,
-		ReadTimeout:       defaultReadTimeout,
-		WriteTimeout:      defaultWriteTimeout,
-		IdleTimeout:       defaultIdleTimeout,
-		ShutdownTimeout:   defaultShutdownTimeout,
+		HTTPAddr:           envOrDefault("HTTP_ADDR", defaultHTTPAddr),
+		DatabaseDSN:        envOrDefault("DATABASE_DSN", envOrDefault("DSN", defaultDatabaseDSN)),
+		MaxHeaderBytes:     defaultMaxHeaderBytes,
+		ReadHeaderTimeout:  defaultReadHeaderTimeout,
+		ReadTimeout:        defaultReadTimeout,
+		WriteTimeout:       defaultWriteTimeout,
+		IdleTimeout:        defaultIdleTimeout,
+		ShutdownTimeout:    defaultShutdownTimeout,
+		SessionSecure:      envOrDefault("SESSION_SECURE", "false") == "true",
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleRedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
 	}
 	if value := os.Getenv("HTTP_MAX_HEADER_BYTES"); value != "" {
 		parsed, err := strconv.Atoi(value)
@@ -86,6 +94,16 @@ func (c Config) Validate() error {
 	}
 	if c.MaxHeaderBytes <= 0 {
 		return fmt.Errorf("config: HTTP_MAX_HEADER_BYTES must be positive")
+	}
+	googleValues := []string{c.GoogleClientID, c.GoogleClientSecret, c.GoogleRedirectURL}
+	configured := 0
+	for _, value := range googleValues {
+		if value != "" {
+			configured++
+		}
+	}
+	if configured != 0 && configured != len(googleValues) {
+		return fmt.Errorf("config: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URL must be configured together")
 	}
 	for name, value := range map[string]time.Duration{
 		"HTTP_READ_HEADER_TIMEOUT": c.ReadHeaderTimeout,

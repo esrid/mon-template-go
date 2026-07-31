@@ -178,3 +178,27 @@ go test ./...
 Authentication, sessions, CSRF/CORS policy, queues, email, caching, object
 storage, payments, observability vendors, and frontend frameworks are
 deliberately project-specific.
+
+## Authentication
+
+The template includes a vertical `internal/feature/identity` module with:
+
+- email/password registration and login using `golang.org/x/crypto/bcrypt`;
+- persistent server-side sessions using SCS and SQLite;
+- optional Google OpenID Connect login;
+- email-verification and password-reset token workflows;
+- `GET /auth/me` and logout support.
+
+Google login is mounted but returns 404 until all three variables are set:
+
+```env
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URL=http://localhost:8080/auth/google/callback
+```
+
+Set `SESSION_SECURE=true` behind HTTPS. Development token endpoints deliberately
+expose or log tokens because the template does not choose an email provider;
+replace that transport before production.
+
+- [`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md) — authentication flows and production boundaries.
