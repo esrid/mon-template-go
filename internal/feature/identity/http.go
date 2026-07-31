@@ -23,6 +23,7 @@ type HTTP struct {
 func NewHTTP(service *Service, sessions *scs.SessionManager, google *GoogleProvider) *HTTP {
 	return &HTTP{service: service, sessions: sessions, google: google}
 }
+
 func Mount(mux *http.ServeMux, h *HTTP) {
 	mux.HandleFunc("POST /auth/register", h.register)
 	mux.HandleFunc("POST /auth/login", h.login)
@@ -35,6 +36,7 @@ func Mount(mux *http.ServeMux, h *HTTP) {
 	mux.HandleFunc("POST /auth/password-reset", h.issueReset)
 	mux.HandleFunc("POST /auth/password-reset/confirm", h.confirmReset)
 }
+
 func decode(w http.ResponseWriter, r *http.Request, dst any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
 	return json.NewDecoder(r.Body).Decode(dst)
