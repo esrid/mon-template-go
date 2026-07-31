@@ -101,8 +101,7 @@ func (h *HTTP) googleStart(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, ErrGoogleDisabled)
 		return
 	}
-	state, _ := randomURLToken()
-	nonce, _ := randomURLToken()
+	state, nonce := randomURLToken(), randomURLToken()
 	h.sessions.Put(r.Context(), "google.state", state)
 	h.sessions.Put(r.Context(), "google.nonce", nonce)
 	http.Redirect(w, r, h.google.AuthCodeURL(state, nonce), http.StatusFound)

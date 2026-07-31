@@ -3,7 +3,6 @@ package identity
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -24,12 +23,8 @@ func NewGoogleProvider(ctx context.Context, clientID, clientSecret, redirectURL 
 	}
 	return &GoogleProvider{oauth: oauth2.Config{ClientID: clientID, ClientSecret: clientSecret, Endpoint: provider.Endpoint(), RedirectURL: redirectURL, Scopes: []string{oidc.ScopeOpenID, "email", "profile"}}, verifier: provider.Verifier(&oidc.Config{ClientID: clientID})}, nil
 }
-func randomURLToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(b), nil
+func randomURLToken() string {
+	return rand.Text()
 }
 func (g *GoogleProvider) AuthCodeURL(state, nonce string) string {
 	return g.oauth.AuthCodeURL(state, oidc.Nonce(nonce))
